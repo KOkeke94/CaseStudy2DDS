@@ -1,0 +1,460 @@
+---
+title: "Case Study 2 Analysis"
+author: "Kosi Okeke"
+date: "2024-04-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# EDA
+
+We would like to do beginner EDA on variables to explore if they are related to either Attrition or MonthlyIncome.
+
+But first...
+
+```{r Loading Libraries}
+#Necessary Libraries (ongoing list that may update)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(tidyr)
+library(caret)
+library(shiny)
+library(class)
+library(caTools)
+library(e1071)
+```
+
+```{r Loading Data}
+#Load in the original dataset. It is a survey of attrition at a company
+attrition = read.csv(choose.files(), header = TRUE)
+str(attrition)
+View(attrition)
+summary(attrition)
+```
+
+## Beginner EDA
+
+```{r Beginner EDA}
+##Let's do some beginner EDA on our variables:
+# Visualize distribution of Age
+# Calculate mean and median of Age
+mean_age <- mean(attrition$Age)
+median_age <- median(attrition$Age)
+sd(attrition$Age)
+min(attrition$Age)
+max(attrition$Age)
+```
+
+We see that our youngest employee is 18 while our oldest is 60. We can view the distribution in the next chunk.
+
+```{r Factor - Age}
+# Visualize distribution of Age with mean and median lines
+ggplot(data = attrition, aes(x = Age)) +
+  geom_histogram(binwidth = 1, fill = "purple", color = "green") +
+  geom_vline(xintercept = mean_age, color = "yellow", linetype = "dashed", size = 1) +  # Add mean line
+  geom_vline(xintercept = median_age, color = "white", linetype = "dashed", size = 1) +  # Add median line
+  annotate("text", x = mean_age + 3, y = 50, label = paste("Mean:", round(mean_age, 2)), color = "black", size = 4) +  # Add mean label
+  annotate("text", x = median_age - 3, y = 5, label = paste("Median:", round(median_age, 2)), color = "White", size = 4) +  # Add median label
+  labs(title = "Distribution of Age with Mean and Median",
+       x = "Age",
+       y = "Frequency") +
+  scale_x_continuous(breaks = seq(0, max(attrition$Age), by = 5)) +  # Adjust x-axis breaks
+  theme_minimal()
+
+# Explore relationship between Age and Attrition
+ggplot(attrition, aes(x = Age, fill = Attrition)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 30) +
+  labs(title = "Distribution of Age by Attrition Status")
+# Avg age for attrition looks to be around the 30s.
+
+# Age is one of our factors for Attrition.
+ggplot(attrition, aes(x = Attrition, y = Age, fill = Attrition)) +
+  geom_boxplot() +
+  stat_summary(fun = median, geom = "point", shape = 23, size = 3, color = "black") +  # Add mean points
+  stat_summary(fun = median, geom = "text", aes(label = round(..y.., 1)), vjust = -1.0, size = 3, color = "black") +  # Add mean labels
+  labs(x = "Attrition", y = "Age", fill = "Attrition") +
+  ggtitle("BoxPlot Showing Employee Ages per Attrition Group") +
+  theme_minimal()
+```
+
+**Age** is one of our factors for Attrition.
+
+```{r Factor - YearsWCurrentManager}
+ggplot(attrition, aes(x = Attrition, y = YearsWithCurrManager, fill = Attrition)) +
+       geom_boxplot() +
+       stat_summary(fun = median, geom = "point", shape = 23, size = 3, color = "black") +  # Add mean points
+       stat_summary(fun = median, geom = "text", aes(label = round(..y.., 1)), vjust = -1.0, size = 3, color = "black") +  # Add mean labels
+       labs(x = "Attrition", y = "Years with Current Manager", fill = "Attrition") +
+       ggtitle("Distribution of Years with Current Manager by Attrition") +
+       theme_minimal()
+
+t.test(YearsWithCurrManager ~ Attrition, data = attrition) # Mean of
+# no group is 4.37, mean of yes is 2.94. No > Yes. 
+chisq.test(table(attrition$YearsWithCurrManager, attrition$Attrition))
+# When we do the same for YearsWithCurrManager we see both tests have extremely
+# low p-values. So we know there's a reason to believe the mean difference b/n
+# No and Yes groups for YearsWithCurrManager is different than 0 (nonzero). 
+```
+
+The mean of No Attrition group is **4.37 years**.
+
+Mean of Yes Attrition is **2.94**.
+
+Our p-value of **5.084e-06** let's us know the No Group's mean is greater than Yes Group's (nonzero mean between the groups is positive).
+
+Running a Chi-Squared test on **YearsWCurrentManager** and Attrition we receive an extremely low p-value letting us know the variables are associated.
+
+```{r Factor - JobInvolvement}
+# Calculate attrition rates for each level of JobInvolvement
+attrition_rates <- attrition %>%
+  group_by(JobInvolvement, Attrition) %>%
+  summarize(count = n()) %>%
+  group_by(JobInvolvement) %>%
+  mutate(attrition_rate = sum(count[Attrition == "Yes"]) / sum(count) * 100)
+
+# Create a bar plot of attrition rates by JobInvolvement
+ggplot(attrition_rates, aes(x = JobInvolvement, y = attrition_rate, fill = JobInvolvement)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "skyblue") +
+  geom_text(aes(label = sprintf("%.1f%%", attrition_rate)), vjust = -0.5, size = 3) +  # Add text annotations
+  labs(title = "Attrition Rates by Job Involvement",
+       x = "Job Involvement",
+       y = "Attrition Rate (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# Job involvement obviously correlates with attrition rates. As job involvement 
+# increases, the rate of attrition decreases. People who feel more involved don't
+# want to quit or leave the job. 
+
+```
+
+We can see intuitively that **JobInvolvement** correlates with Attrition. As Job Involvement increases levels, Attrition Rate goes down.
+
+This can mean that as employees feel more involved in their job, they will want to stick around and continue working for the company.
+
+Now that we have found the factors we believe affect Attrition the most, let's build a prediction model.
+
+# Prediction Models
+
+We are going to build two predictive models:
+
+1\. Choosing b/n either a kNN classifier model or a Naive-Bayes model to see if we can predict who will fall in the Attrition group or not on a competition dataset (Seeking Specificity \> 60% and a Sensitivity \> 60%).
+
+2\. A linear regression model capable of prediciting MonthlyIncome on the competition dataset (seeking an RMSE \< \$3000).
+
+## Naive-Bayes
+
+We start off with preprocessing the data.
+
+```{r Naive Bayes - Preprocessing}
+# Preprocess the data
+attrition$Education <- as.factor(attrition$Education)
+attrition$EnvironmentSatisfaction <- as.factor(attrition$EnvironmentSatisfaction)
+attrition$JobInvolvement <- as.factor(attrition$JobInvolvement)
+attrition$JobLevel <- as.factor(attrition$JobLevel)
+attrition$JobSatisfaction <- as.factor(attrition$JobSatisfaction)
+attrition$PerformanceRating <- as.factor(attrition$PerformanceRating)
+attrition$RelationshipSatisfaction <- as.factor(attrition$RelationshipSatisfaction)
+attrition$StockOptionLevel <- as.factor(attrition$StockOptionLevel)
+attrition$WorkLifeBalance <- as.factor(attrition$WorkLifeBalance)
+attrition <- attrition[, !names(attrition) %in% "EmployeeCount"]
+attrition <- attrition[, !names(attrition) %in% "EmployeeNumber"]
+# Identify character columns
+char_columns <- sapply(attrition, is.character)
+# Convert character columns to factors
+attrition[char_columns] <- lapply(attrition[char_columns], as.factor)
+```
+
+### 80/20 random Train and Test split of the data
+
+```{r Naive Bayes - Test/Train}
+# Split the data into training and testing sets
+set.seed(123)  # Set seed for reproducibility
+split <- sample.split(attrition$Attrition, SplitRatio = 0.8)
+train_data <- attrition[split, ]
+test_data <- attrition[!split, ]
+
+str(train_data) # We see Over18 and StandardHours have only 1 value throughout the rows
+# Remove variables with only one level
+train_data_clean <- train_data[, sapply(train_data, function(x) length(unique(x)) > 1)]
+
+```
+
+```{r Original Naive Bayes}
+# Build the Naive Bayes model
+nb_model <- naiveBayes(Attrition ~ . - ID, data = train_data_clean)
+nb_model
+# Make predictions on the test data
+predictions <- predict(nb_model, test_data)
+# We will need to do the same on the dataset professor gave us eventually 
+
+# Assess model performance
+confusion_matrix <- table(predictions, test_data$Attrition)
+confusion_matrix
+
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+accuracy
+precision <- confusion_matrix[2, 2] / sum(confusion_matrix[, 2])
+precision
+recall <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ]) #also known as sensitivity
+recall
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+```
+
+We see we can definitely improve on our model. Let's try using thresholds.
+
+```{r Naive Bayes thresholding}
+# Obtain predicted probabilities
+predicted_probabilities <- predict(nb_model, test_data, type = "raw")
+
+# Choose a new threshold (e.g., 0.7 is what we settled on after using different numbers)
+new_threshold <- 0.70
+
+# Assign class labels based on the new threshold
+predicted_labels <- ifelse(predicted_probabilities[, "Yes"] >= new_threshold, "Yes", "No")
+
+# Calculate confusion matrix
+confusion_matrix <- table(predicted_labels, test_data$Attrition)
+confusion_matrix
+
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+accuracy
+
+precision <- confusion_matrix[2, 2] / sum(confusion_matrix[, 2])
+precision
+recall <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ]) #also known as sensitivity
+recall # Much greater than our 60% from rubric
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+```
+
+First is accuracy. Then Precision. Then Recall/Sensitivity. Then an F1 Score.
+
+Let's run the model for the new submission data set.
+
+```{r Preprocess the Submission Data}
+attrition_test = read.csv(choose.files(), header = TRUE)
+
+# Preprocess the data
+attrition_test$Education <- as.factor(attrition_test$Education)
+attrition_test$EnvironmentSatisfaction <- as.factor(attrition_test$EnvironmentSatisfaction)
+attrition_test$JobInvolvement <- as.factor(attrition_test$JobInvolvement)
+attrition_test$JobLevel <- as.factor(attrition_test$JobLevel)
+attrition_test$JobSatisfaction <- as.factor(attrition_test$JobSatisfaction)
+attrition_test$PerformanceRating <- as.factor(attrition_test$PerformanceRating)
+attrition_test$RelationshipSatisfaction <- as.factor(attrition_test$RelationshipSatisfaction)
+attrition_test$StockOptionLevel <- as.factor(attrition_test$StockOptionLevel)
+attrition_test$WorkLifeBalance <- as.factor(attrition_test$WorkLifeBalance)
+attrition_test <- attrition_test[, !names(attrition_test) %in% "EmployeeCount"]
+attrition_test <- attrition_test[, !names(attrition_test) %in% "EmployeeNumber"]
+# Identify character columns
+char_columns <- sapply(attrition_test, is.character)
+# Convert character columns to factors
+attrition_test[char_columns] <- lapply(attrition_test[char_columns], as.factor)
+
+testing_clean <- attrition_test[, sapply(attrition_test, function(x) length(unique(x)) > 1)]
+
+```
+
+Data is cleaned. Now to make the CSV.
+
+```{r Creating a Submission CSV}
+# TESTING ON THE NEW DATASET
+predicted_probabilities <- predict(nb_model, testing_clean, type = "raw")
+# Choose a new threshold (e.g., 0.4)
+new_threshold <- 0.70
+# Assign class labels based on the new threshold
+predicted_labels <- ifelse(predicted_probabilities[, "Yes"] >= new_threshold, "Yes", "No")
+
+testing_clean$Predicted_Attrition <- predicted_labels
+
+# NOW WE CREATE OUR SUBMISSION DATAFRAME AND CSV:
+Case2PredictionsOKEKEAttrition = data.frame(ID = testing_clean$ID,
+                                            Attrition = testing_clean$Predicted_Attrition)
+View(Case2PredictionsOKEKEAttrition)
+# Write dataframe to CSV file
+write.csv(Case2PredictionsOKEKEAttrition, file = "Case2PredictionsOKEKE Attrition.csv", row.names = FALSE)
+```
+
+Submission complete.
+
+## Linear Regression Model
+
+Now we need to build a Linear Regression Model to help predict MonthlyIncome.
+
+```{r Linear Model - Preprocessing}
+### Building a linear regression model to predict "MonthlyIncome" variable
+attrition = read.csv(choose.files(), header = TRUE)
+
+
+
+# Preprocess the data
+attrition$Education <- as.factor(attrition$Education)
+attrition$EnvironmentSatisfaction <- as.factor(attrition$EnvironmentSatisfaction)
+attrition$JobInvolvement <- as.factor(attrition$JobInvolvement)
+attrition$JobLevel <- as.factor(attrition$JobLevel)
+attrition$JobSatisfaction <- as.factor(attrition$JobSatisfaction)
+attrition$PerformanceRating <- as.factor(attrition$PerformanceRating)
+attrition$RelationshipSatisfaction <- as.factor(attrition$RelationshipSatisfaction)
+attrition$StockOptionLevel <- as.factor(attrition$StockOptionLevel)
+attrition$WorkLifeBalance <- as.factor(attrition$WorkLifeBalance)
+attrition <- attrition[, !names(attrition) %in% "EmployeeCount"]
+attrition <- attrition[, !names(attrition) %in% "EmployeeNumber"]
+# Identify character columns
+char_columns <- sapply(attrition, is.character)
+# Convert character columns to factors
+attrition[char_columns] <- lapply(attrition[char_columns], as.factor)
+```
+
+Now let's make sure we increase the robustness of our model by doing an 80/20 train and test split.
+
+### Train and Test Split (80/20)
+
+```{r Linear Model - Train and Test}
+# Split the data into training and testing sets
+set.seed(123)  # Set seed for reproducibility
+split <- sample.split(attrition$Attrition, SplitRatio = 0.8)
+train_data <- attrition[split, ]
+test_data <- attrition[!split, ]
+```
+
+```{r Linear Model - More Data Cleaning}
+str(train_data) # We see Over18 and StandardHours have only 1 value throughout the rows
+# Remove variables with only one level
+train_data_clean <- train_data[, sapply(train_data, function(x) length(unique(x)) > 1)]
+
+# Check the structure of the cleaned dataset
+str(train_data_clean) # We are good to go.
+```
+
+Our data is much cleaner now. Let's use forward selection to let variable selection guide us when choosing predictors for MonthlyIncome.
+
+```{r Linear Regression Model - Variable Selection}
+# Forward selection:
+# Int only model
+intercept_only = lm(MonthlyIncome ~ 1, data = train_data_clean)
+#model w all predictors except identifier columns
+all <- lm(MonthlyIncome ~ . - ID, data = train_data_clean)
+#forward selection
+forward = step(intercept_only, direction = 'forward', scope = formula(all), trace = 0)
+forward
+# Call:
+# lm(formula = MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears + 
+#      BusinessTravel + DailyRate + YearsSinceLastPromotion + Education + 
+#      Attrition, data = train_data_clean)
+
+```
+
+We now have the variables that forward selection has provided us. Let's make the final model
+
+```{r Linear Regression Model - 80/20 train set}
+final = lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears + 
+            BusinessTravel + DailyRate + YearsSinceLastPromotion + Education + 
+            Attrition, data = train_data_clean)
+summary(final)
+# Residual standard error: 984.4 on 673 degrees of freedom
+# Multiple R-squared:  0.9564,	Adjusted R-squared:  0.9549 
+# F-statistic: 670.5 on 22 and 673 DF,  p-value: < 2.2e-16
+
+## CHECKING FOR RMSE ON THE MODEL:
+# Obtain predicted values
+predicted <- predict(final, train_data_clean)
+# Calculate residuals
+residuals <- predicted - train_data_clean$MonthlyIncome
+# Square residuals
+squared_residuals <- residuals^2
+# Calculate mean of squared residuals
+mse <- mean(squared_residuals)
+# Take square root to get RMSE
+rmse <- sqrt(mse)
+rmse # [1] 967.9574
+
+```
+
+```{r Recleaning the test_data}
+# CLEANING TEST_DATA before running the model on the test dataset
+
+# Remove variables with only one level
+test_data_clean <- test_data[, sapply(test_data, function(x) length(unique(x)) > 1)]
+# Check the structure of the cleaned dataset
+str(test_data_clean) #
+```
+
+```{r Linear Regression Model - 80/20 Test Set}
+## CHECKING FOR RMSE ON THE MODEL:
+# Obtain predicted values
+predicted_test <- predict(final, test_data_clean)
+# Calculate residuals
+residuals_test <- predicted_test - test_data_clean$MonthlyIncome
+# Square residuals
+squared_residuals_test <- residuals_test^2
+# Calculate mean of squared residuals
+mse_test <- mean(squared_residuals_test)
+# Take square root to get RMSE
+rmse_test <- sqrt(mse_test)
+rmse_test
+# [1] 1072.596
+```
+
+We see that our model performs well enough to pass the \<\$3000 threshold Bivin asks for.
+
+Let's use 10-Fold Cross Validation to make sure our model will perform well on new, unseen data.
+
+```{r Linear Regression Model - Cross Validation}
+# Define the training control
+ctrl <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+# Train the linear regression model with cross-validation
+final_model <- train(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears + 
+                 BusinessTravel + DailyRate + YearsSinceLastPromotion + 
+                 Education + Attrition, data = train_data_clean, 
+               method = "lm", trControl = ctrl)
+final_model
+```
+
+We have a lower RMSE after doing Cross Validation meaning I'm confident it won't increase too much for new data.
+
+```{r Linear Regression Model - Submission Cleaning}
+### Preparing to create the submission dataframe and csv
+submission_df = read.csv(choose.files(), header = TRUE)
+# Preprocess the data
+submission_df$Education <- as.factor(submission_df$Education)
+submission_df$EnvironmentSatisfaction <- as.factor(submission_df$EnvironmentSatisfaction)
+submission_df$JobInvolvement <- as.factor(submission_df$JobInvolvement)
+submission_df$JobLevel <- as.factor(submission_df$JobLevel)
+submission_df$JobSatisfaction <- as.factor(submission_df$JobSatisfaction)
+submission_df$PerformanceRating <- as.factor(submission_df$PerformanceRating)
+submission_df$RelationshipSatisfaction <- as.factor(submission_df$RelationshipSatisfaction)
+submission_df$StockOptionLevel <- as.factor(submission_df$StockOptionLevel)
+submission_df$WorkLifeBalance <- as.factor(submission_df$WorkLifeBalance)
+submission_df <- submission_df[, !names(submission_df) %in% "EmployeeCount"]
+submission_df <- submission_df[, !names(submission_df) %in% "EmployeeNumber"]
+# Identify character columns
+char_columns <- sapply(submission_df, is.character)
+# Convert character columns to factors
+submission_df[char_columns] <- lapply(submission_df[char_columns], as.factor)
+# Remove variables with only one level
+submission_df_clean <- submission_df[, sapply(submission_df, function(x) length(unique(x)) > 1)]
+
+```
+
+```{r Predicting MonthlyIncome - Submission Set}
+# Predict monthly incomes using the trained linear regression model
+predicted_monthly_income <- predict(final, newdata = submission_df_clean)
+
+# Add predicted monthly incomes to the submission dataframe
+submission_df_clean$PredictedMonthlyIncome <- predicted_monthly_income
+
+
+#Create Prediction dataframe for upload/grading
+Case2PredictionsOKEKE_Salary = data.frame(ID = submission_df_clean$ID,
+MonthlyIncome = submission_df_clean$PredictedMonthlyIncome)
+
+# Write the submission dataframe to a CSV file
+write.csv(Case2PredictionsOKEKE_Salary, "Case2PredictionsOKEKE Salary.csv", row.names = FALSE)
+```
+
+We have now created our CSV for submission.
